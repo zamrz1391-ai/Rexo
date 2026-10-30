@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "V2Rexo",
+    "slug": "v2rexo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0b1020",
+    "splash": {
+      "backgroundColor": "#0b1020",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "bundleIdentifier": "com.v2rexo.app"
+    },
+    "android": {
+      "package": "com.v2rexo.app",
+      "permissions": [
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+        "android.permission.INTERNET",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}
