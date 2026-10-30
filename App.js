@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
-import { buildXrayConfig } from './src/XrayConfigBuilder';
+import { buildXrayConfig } from './XrayConfigBuilder';
 import { connect, disconnect, subscribeState } from './src/VpnEngine';
 
 const STORAGE_KEY = 'v2rexo.configs';
