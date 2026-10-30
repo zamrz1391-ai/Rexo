@@ -7,7 +7,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { buildXrayConfig } from './XrayConfigBuilder';
-import { connect, disconnect, subscribeState } from './VpnEngine';
+import { connect, disconnect, subscribeState } from './src/VpnEngine';
 
 const STORAGE_KEY = 'v2rexo.configs';
 const COLORS = {
