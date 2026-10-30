@@ -8,14 +8,18 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
@@ -23,13 +27,13 @@ jobs:
       - name: Install packages
         run: npm install
 
-      - name: Align versions with Expo SDK
+      - name: Align Expo versions
         run: npx expo install --fix
 
-      - name: Generate native Android project
+      - name: Generate Android project
         run: npx expo prebuild --platform android --no-install
 
-      - name: Fix Gradle task order for Xray
+      - name: Fix Xray Gradle task order
         run: |
           cat >> android/app/build.gradle <<'EOF'
 
@@ -40,10 +44,11 @@ jobs:
           }
           EOF
 
-      - name: Compile APK
-        run: cd android && ./gradlew assembleDebug --no-daemon
+      - name: Build Release APK
+        run: cd android && ./gradlew assembleRelease --no-daemon
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
         with:
-          name: V2Rexo-APK
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: V2Rexo-Release
+          path: android/app/build/outputs/apk/release/*.apk
