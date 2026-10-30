@@ -12,8 +12,8 @@
     "expo-xray-vpn": "^0.7.30",
     "react": "19.3.0",
     "react-native": "0.88.1",
-    "react-native-nitro-modules": "^0.20.0",
-    "react-native-nitro-xray-core": "^0.1.0",
+    "react-native-nitro-modules": "^0.29.3",
+    "react-native-nitro-xray-core": "^1.6.0",
     "react-native-safe-area-context": "*"
   }
 }
