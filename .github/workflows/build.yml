@@ -1,3 +1,4 @@
+
 name: Build V2Rexo APK
 
 on:
@@ -37,9 +38,11 @@ jobs:
         run: |
           cat >> android/app/build.gradle <<'EOF'
 
-          tasks.whenTaskAdded { task ->
-            if (task.name.contains('desugar')) {
-              task.dependsOn project(':expo-xray-vpn').tasks.matching { it.name == 'extractXrayAar' }
+          tasks.configureEach { task ->
+            if (task.name == 'collectReleaseDependencies' || task.name.contains('desugar')) {
+              task.dependsOn project(':expo-xray-vpn').tasks.matching {
+                it.name == 'extractXrayAar'
+              }
             }
           }
           EOF
@@ -52,3 +55,4 @@ jobs:
         with:
           name: V2Rexo-Release
           path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
