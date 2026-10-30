@@ -29,6 +29,17 @@ jobs:
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 
+      - name: Fix Gradle task order for Xray
+        run: |
+          cat >> android/app/build.gradle <<'EOF'
+
+          tasks.whenTaskAdded { task ->
+            if (task.name.contains('desugar')) {
+              task.dependsOn project(':expo-xray-vpn').tasks.matching { it.name == 'extractXrayAar' }
+            }
+          }
+          EOF
+
       - name: Compile APK
         run: cd android && ./gradlew assembleDebug --no-daemon
 
