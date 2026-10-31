@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
+import { fetchSubscription } from './SubscriptionManager';
 import { buildXrayConfig } from './XrayConfigBuilder';
 import { connect, disconnect, subscribeState } from './src/VpnEngine';
 
