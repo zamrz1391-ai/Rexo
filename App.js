@@ -1,18 +1,10 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Alert,
-  StatusBar,
-  ActivityIndicator,
-  Animated,
-  Easing,
+  View, Text, TextInput, TouchableOpacity, ScrollView,
+  StyleSheet, Alert, StatusBar, ActivityIndicator,
+  Animated, Easing,
 } from 'react-native';
+
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { fetchSubscription } from './SubscriptionManager';
@@ -27,7 +19,6 @@ const C = {
   panel2: '#191A27',
   purple: '#8857FF',
   purpleLight: '#A98BFF',
-  purpleDark: '#38216F',
   white: '#F7F5FF',
   muted: '#85849A',
   green: '#36D6A0',
@@ -44,12 +35,15 @@ const formatTime = (seconds) => {
 
 export default function App() {
   const [input, setInput] = useState('');
+  const [subscriptionUrl, setSubscriptionUrl] = useState('');
   const [configs, setConfigs] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [state, setState] = useState('disconnected');
   const [busy, setBusy] = useState(false);
+  const [subscriptionBusy, setSubscriptionBusy] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [showSubscription, setShowSubscription] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
   const pulse = useRef(new Animated.Value(1)).current;
@@ -59,7 +53,6 @@ export default function App() {
   const connected = state === 'connected';
   const connecting = state === 'connecting';
 
-  // Load saved configurations
   useEffect(() => {
     let mounted = true;
 
@@ -101,7 +94,6 @@ export default function App() {
     };
   }, []);
 
-  // Save configurations
   const persist = async (list) => {
     setConfigs(list);
     try {
@@ -111,7 +103,6 @@ export default function App() {
     }
   };
 
-  // Connection timer
   useEffect(() => {
     if (!connected) return;
 
@@ -124,7 +115,6 @@ export default function App() {
     return () => clearInterval(timer);
   }, [connected]);
 
-  // Connection animations
   useEffect(() => {
     if (connected || connecting) {
       const animation = Animated.loop(
@@ -172,6 +162,7 @@ export default function App() {
     glow.setValue(0.25);
   }, [connected, connecting]);
 
+  // افزودن کانفیگ تکی
   const addConfig = useCallback(async () => {
     const link = input.trim();
 
@@ -181,11 +172,9 @@ export default function App() {
     }
 
     try {
-      buildXrayConfig(link);
+      const parsed = buildXrayConfig(link);
 
-      const exists = configs.some(c => c.link === link);
-
-      if (exists) {
+      if (configs.some(c => c.link === link)) {
         Alert.alert('کانفیگ تکراری', 'این کانفیگ قبلاً اضافه شده است.');
         return;
       }
@@ -195,6 +184,7 @@ export default function App() {
         link,
         name: 'کانفیگ ' + (configs.length + 1),
         createdAt: Date.now(),
+        source: 'manual',
       };
 
       await persist([...configs, item]);
@@ -208,6 +198,66 @@ export default function App() {
     }
   }, [input, configs]);
 
+  // دریافت اشتراک از لینک
+  const addSubscription = async () => {
+    const url = subscriptionUrl.trim();
+
+    if (!url) {
+      Alert.alert('آدرس خالی است', 'لینک اشتراک را وارد کن.');
+      return;
+    }
+
+    if (subscriptionBusy) return;
+
+    setSubscriptionBusy(true);
+
+    try {
+      const result = await fetchSubscription(url);
+
+      const existingLinks = new Set(configs.map(c => c.link));
+      const newConfigs = result.configs
+        .filter(c => !existingLinks.has(c.link))
+        .map((c, index) => ({
+          ...c,
+          id: `sub-${Date.now()}-${index}`,
+          source: 'subscription',
+          createdAt: Date.now(),
+        }));
+
+      if (newConfigs.length === 0) {
+        Alert.alert('اشتراک دریافت شد', 'کانفیگ جدیدی پیدا نشد؛ همه موارد تکراری بودند.');
+        return;
+      }
+
+      const updated = [...configs, ...newConfigs];
+      await persist(updated);
+
+      if (!selectedId) {
+        setSelectedId(newConfigs[0].id);
+      }
+
+      setSubscriptionUrl('');
+      setShowSubscription(false);
+
+      const errorText = result.errors.length
+        ? `\nموارد نامعتبر: ${result.errors.length}`
+        : '';
+
+      Alert.alert(
+        'اشتراک اضافه شد',
+        `${newConfigs.length} کانفیگ جدید دریافت شد.${errorText}`
+      );
+    } catch (e) {
+      Alert.alert(
+        'خطا در دریافت اشتراک',
+        e.message || 'دریافت لینک اشتراک ناموفق بود.'
+      );
+    } finally {
+      setSubscriptionBusy(false);
+    }
+  };
+
+  // اتصال و قطع اتصال
   const toggleConnection = async () => {
     if (busy) return;
 
@@ -230,12 +280,7 @@ export default function App() {
     const selected = configs.find(c => c.id === selectedId);
 
     if (!selected) {
-      if (!configs.length) {
-        setShowAdd(true);
-        Alert.alert('کانفیگی وجود ندارد', 'ابتدا یک کانفیگ اضافه کن.');
-      } else {
-        Alert.alert('انتخاب کانفیگ', 'ابتدا کانفیگ موردنظرت را انتخاب کن.');
-      }
+      Alert.alert('کانفیگی وجود ندارد', 'ابتدا یک کانفیگ اضافه و انتخاب کن.');
       return;
     }
 
@@ -264,36 +309,34 @@ export default function App() {
     }
   };
 
+  // حذف کانفیگ
   const removeConfig = (id) => {
-    Alert.alert(
-      'حذف کانفیگ',
-      'از حذف این کانفیگ مطمئنی؟',
-      [
-        { text: 'انصراف', style: 'cancel' },
-        {
-          text: 'حذف',
-          style: 'destructive',
-          onPress: async () => {
-            if (activeId === id) {
-              try {
-                await disconnect();
-              } catch (e) {}
-              setActiveId(null);
-              setState('disconnected');
-              connectedAt.current = null;
-              setElapsed(0);
-            }
+    Alert.alert('حذف کانفیگ', 'از حذف این کانفیگ مطمئنی؟', [
+      { text: 'انصراف', style: 'cancel' },
+      {
+        text: 'حذف',
+        style: 'destructive',
+        onPress: async () => {
+          if (activeId === id) {
+            try {
+              await disconnect();
+            } catch (e) {}
 
-            const list = configs.filter(c => c.id !== id);
-            await persist(list);
+            setActiveId(null);
+            setState('disconnected');
+            connectedAt.current = null;
+            setElapsed(0);
+          }
 
-            if (selectedId === id) {
-              setSelectedId(list.length ? list[0].id : null);
-            }
-          },
+          const list = configs.filter(c => c.id !== id);
+          await persist(list);
+
+          if (selectedId === id) {
+            setSelectedId(list.length ? list[0].id : null);
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const selectedConfig = configs.find(c => c.id === selectedId);
@@ -305,7 +348,7 @@ export default function App() {
       : C.muted;
 
   const statusText = connected
-    ? 'اتصال برقرار است'
+    ? 'اتصال شما برقرار است'
     : connecting
       ? 'در حال برقراری اتصال'
       : 'آماده اتصال';
@@ -321,10 +364,11 @@ export default function App() {
           showsVerticalScrollIndicator={false}
         >
 
-          {/* HEADER */}
           <View style={styles.header}>
             <View>
-              <Text style={styles.brand}>V2<Text style={styles.brandAccent}>Rexo</Text></Text>
+              <Text style={styles.brand}>
+                V2<Text style={styles.brandAccent}>Rexo</Text>
+              </Text>
               <Text style={styles.brandCaption}>SECURE CONNECTION</Text>
             </View>
 
@@ -334,7 +378,6 @@ export default function App() {
             </View>
           </View>
 
-          {/* WELCOME */}
           <View style={styles.welcome}>
             <Text style={styles.welcomeTitle}>
               {connected ? 'اتصال شما فعاله!' : 'آماده اتصال هستی؟'}
@@ -346,7 +389,6 @@ export default function App() {
             </Text>
           </View>
 
-          {/* CONNECTION AREA */}
           <View style={styles.connectionArea}>
             <Animated.View
               style={[
@@ -377,8 +419,9 @@ export default function App() {
                 ) : (
                   <Text style={styles.powerIcon}>⏻</Text>
                 )}
+
                 <Text style={styles.connectButtonLabel}>
-                  {connected ? 'قطع اتصال' : connecting ? 'لطفاً صبر کن' : 'اتصال'}
+                  {connected ? 'قطع اتصال' : 'اتصال'}
                 </Text>
               </Animated.View>
             </TouchableOpacity>
@@ -394,7 +437,6 @@ export default function App() {
             <Text style={styles.timer}>{formatTime(elapsed)}</Text>
           </View>
 
-          {/* SELECTED SERVER */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>سرور انتخاب‌شده</Text>
             <Text style={styles.sectionHint}>SERVER</Text>
@@ -420,7 +462,6 @@ export default function App() {
             </View>
           </View>
 
-          {/* TRAFFIC */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>آمار اتصال</Text>
             <Text style={styles.sectionHint}>TRAFFIC</Text>
@@ -442,7 +483,6 @@ export default function App() {
             </View>
           </View>
 
-          {/* CONFIGURATIONS */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>کانفیگ‌های من</Text>
             <Text style={styles.configCount}>{configs.length} کانفیگ</Text>
@@ -454,7 +494,7 @@ export default function App() {
           >
             <Text style={styles.addNewPlus}>＋</Text>
             <Text style={styles.addNewText}>
-              {showAdd ? 'بستن بخش افزودن' : 'افزودن کانفیگ جدید'}
+              {showAdd ? 'بستن افزودن کانفیگ' : 'افزودن کانفیگ تکی'}
             </Text>
           </TouchableOpacity>
 
@@ -484,12 +524,55 @@ export default function App() {
             </View>
           )}
 
+          <TouchableOpacity
+            style={styles.subscriptionButton}
+            onPress={() => setShowSubscription(!showSubscription)}
+          >
+            <Text style={styles.addNewPlus}>⇧</Text>
+            <Text style={styles.addNewText}>
+              {showSubscription ? 'بستن اشتراک' : 'افزودن اشتراک با لینک'}
+            </Text>
+          </TouchableOpacity>
+
+          {showSubscription && (
+            <View style={styles.addPanel}>
+              <Text style={styles.addPanelTitle}>لینک اشتراک</Text>
+
+              <TextInput
+                style={styles.input}
+                placeholder="https://example.com/subscription"
+                placeholderTextColor={C.muted}
+                value={subscriptionUrl}
+                onChangeText={setSubscriptionUrl}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
+
+              <TouchableOpacity
+                style={styles.submitButton}
+                onPress={addSubscription}
+                disabled={subscriptionBusy}
+              >
+                {subscriptionBusy ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.submitText}>دریافت و افزودن سرورها</Text>
+                )}
+              </TouchableOpacity>
+
+              <Text style={styles.subscriptionHint}>
+                لینک اشتراک باید شامل لیستی از کانفیگ‌های پشتیبانی‌شده باشد.
+              </Text>
+            </View>
+          )}
+
           {configs.length === 0 ? (
             <View style={styles.emptyBox}>
               <Text style={styles.emptyIcon}>⌁</Text>
               <Text style={styles.emptyTitle}>هنوز کانفیگی نداری</Text>
               <Text style={styles.emptyText}>
-                برای شروع، لینک کانفیگ VPN خودت رو اضافه کن.
+                برای شروع، لینک کانفیگ یا لینک اشتراک خودت رو اضافه کن.
               </Text>
             </View>
           ) : (
@@ -528,6 +611,8 @@ export default function App() {
                   <View style={styles.configInfo}>
                     <Text style={styles.configName}>{item.name}</Text>
                     <Text style={styles.configMeta}>
+                      {item.source === 'subscription' ? 'اشتراکی' : 'تکی'}
+                      {' • '}
                       {isActive ? 'متصل' : isSelected ? 'انتخاب‌شده' : 'آماده اتصال'}
                     </Text>
                   </View>
@@ -549,7 +634,6 @@ export default function App() {
             })
           )}
 
-          {/* FOOTER */}
           <View style={styles.footer}>
             <Text style={styles.footerBrand}>V2Rexo</Text>
             <Text style={styles.footerText}>POWERED BY XRAY ENGINE</Text>
@@ -563,451 +647,190 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: C.bg,
-  },
-  root: {
-    flex: 1,
-    backgroundColor: C.bg,
-  },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 35,
-  },
+  safe: { flex: 1, backgroundColor: C.bg },
+  root: { flex: 1, backgroundColor: C.bg },
+  content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 35 },
 
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 30,
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 30,
   },
-  brand: {
-    color: C.white,
-    fontSize: 29,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  brandAccent: {
-    color: C.purpleLight,
-  },
-  brandCaption: {
-    color: C.muted,
-    fontSize: 9,
-    letterSpacing: 3,
-    marginTop: 2,
-  },
+  brand: { color: C.white, fontSize: 29, fontWeight: '900' },
+  brandAccent: { color: C.purpleLight },
+  brandCaption: { color: C.muted, fontSize: 9, letterSpacing: 3, marginTop: 2 },
   headerBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.panel2,
-    borderWidth: 1,
-    borderColor: C.border,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 20,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: C.panel2, borderWidth: 1,
+    borderColor: C.border, paddingHorizontal: 11,
+    paddingVertical: 8, borderRadius: 20,
   },
   headerDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: C.green,
-    marginRight: 7,
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: C.green, marginRight: 7,
   },
-  headerBadgeText: {
-    color: C.muted,
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
+  headerBadgeText: { color: C.muted, fontSize: 9, fontWeight: '800' },
 
-  welcome: {
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  welcomeTitle: {
-    color: C.white,
-    fontSize: 21,
-    fontWeight: '800',
-  },
-  welcomeSub: {
-    color: C.muted,
-    fontSize: 12,
-    marginTop: 8,
-  },
+  welcome: { alignItems: 'center', marginBottom: 12 },
+  welcomeTitle: { color: C.white, fontSize: 21, fontWeight: '800' },
+  welcomeSub: { color: C.muted, fontSize: 12, marginTop: 8 },
 
   connectionArea: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 310,
-    marginBottom: 12,
+    alignItems: 'center', justifyContent: 'center',
+    height: 310, marginBottom: 12,
   },
   outerGlow: {
-    position: 'absolute',
-    width: 205,
-    height: 205,
-    borderRadius: 110,
+    position: 'absolute', width: 205, height: 205, borderRadius: 110,
   },
   connectButton: {
-    width: 174,
-    height: 174,
-    borderRadius: 90,
-    backgroundColor: '#21153F',
-    borderWidth: 2,
-    borderColor: '#7950D9',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 15,
-    shadowColor: C.purple,
-    shadowOpacity: 0.45,
-    shadowRadius: 25,
-    shadowOffset: { width: 0, height: 0 },
+    width: 174, height: 174, borderRadius: 90,
+    backgroundColor: '#21153F', borderWidth: 2,
+    borderColor: '#7950D9', alignItems: 'center',
+    justifyContent: 'center', elevation: 15,
   },
   connectInner: {
-    width: 150,
-    height: 150,
-    borderRadius: 80,
-    backgroundColor: '#38216F',
-    borderWidth: 1,
-    borderColor: '#A184FF',
-    alignItems: 'center',
+    width: 150, height: 150, borderRadius: 80,
+    backgroundColor: '#38216F', borderWidth: 1,
+    borderColor: '#A184FF', alignItems: 'center',
     justifyContent: 'center',
   },
-  connectInnerOn: {
-    backgroundColor: '#145B4C',
-    borderColor: C.green,
-  },
-  powerIcon: {
-    color: C.white,
-    fontSize: 62,
-    fontWeight: '300',
-    lineHeight: 72,
-  },
+  connectInnerOn: { backgroundColor: '#145B4C', borderColor: C.green },
+  powerIcon: { color: C.white, fontSize: 62, lineHeight: 72 },
   connectButtonLabel: {
-    color: C.white,
-    fontSize: 15,
-    fontWeight: '800',
-    marginTop: 2,
+    color: C.white, fontSize: 15, fontWeight: '800', marginTop: 2,
   },
-  statusLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 22,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 5,
-    marginRight: 8,
-  },
-  statusText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  timerLabel: {
-    color: C.muted,
-    fontSize: 11,
-    marginTop: 13,
-  },
+  statusLine: { flexDirection: 'row', alignItems: 'center', marginTop: 22 },
+  statusDot: { width: 8, height: 8, borderRadius: 5, marginRight: 8 },
+  statusText: { fontSize: 13, fontWeight: '700' },
+  timerLabel: { color: C.muted, fontSize: 11, marginTop: 13 },
   timer: {
-    color: C.white,
-    fontSize: 25,
-    fontWeight: '800',
-    letterSpacing: 3,
-    marginTop: 4,
-    fontVariant: ['tabular-nums'],
+    color: C.white, fontSize: 25, fontWeight: '800',
+    letterSpacing: 3, marginTop: 4,
   },
 
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 19,
-    marginBottom: 11,
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginTop: 19, marginBottom: 11,
   },
-  sectionTitle: {
-    color: C.white,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  sectionHint: {
-    color: C.muted,
-    fontSize: 9,
-    letterSpacing: 2,
-  },
+  sectionTitle: { color: C.white, fontSize: 15, fontWeight: '800' },
+  sectionHint: { color: C.muted, fontSize: 9, letterSpacing: 2 },
 
   serverCard: {
-    backgroundColor: C.panel,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: C.panel, borderRadius: 18,
+    borderWidth: 1, borderColor: C.border,
+    padding: 15, flexDirection: 'row', alignItems: 'center',
   },
   serverIcon: {
-    width: 45,
-    height: 45,
-    borderRadius: 14,
-    backgroundColor: '#281B4B',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 45, height: 45, borderRadius: 14,
+    backgroundColor: '#281B4B', alignItems: 'center', justifyContent: 'center',
   },
-  serverIconText: {
-    color: C.purpleLight,
-    fontSize: 28,
-    fontWeight: '900',
-  },
-  serverInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  serverName: {
-    color: C.white,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  serverSub: {
-    color: C.muted,
-    fontSize: 10,
-    marginTop: 5,
-  },
+  serverIconText: { color: C.purpleLight, fontSize: 28 },
+  serverInfo: { flex: 1, marginLeft: 12 },
+  serverName: { color: C.white, fontSize: 14, fontWeight: '800' },
+  serverSub: { color: C.muted, fontSize: 10, marginTop: 5 },
   pingBox: {
-    alignItems: 'center',
-    backgroundColor: C.panel2,
-    borderRadius: 12,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
+    alignItems: 'center', backgroundColor: C.panel2,
+    borderRadius: 12, paddingHorizontal: 13, paddingVertical: 8,
   },
-  pingValue: {
-    color: C.green,
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  pingLabel: {
-    color: C.muted,
-    fontSize: 8,
-    letterSpacing: 1,
-    marginTop: 2,
-  },
+  pingValue: { color: C.green, fontSize: 16, fontWeight: '900' },
+  pingLabel: { color: C.muted, fontSize: 8, marginTop: 2 },
 
-  statsRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
+  statsRow: { flexDirection: 'row', gap: 12 },
   statCard: {
-    flex: 1,
-    backgroundColor: C.panel,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 15,
+    flex: 1, backgroundColor: C.panel, borderRadius: 17,
+    borderWidth: 1, borderColor: C.border, padding: 15,
   },
-  statIcon: {
-    color: C.purpleLight,
-    fontSize: 23,
-    fontWeight: '900',
-  },
-  statTitle: {
-    color: C.muted,
-    fontSize: 11,
-    marginTop: 7,
-  },
-  statValue: {
-    color: C.white,
-    fontSize: 22,
-    fontWeight: '900',
-    marginTop: 5,
-  },
-  statUnit: {
-    color: C.muted,
-    fontSize: 10,
-    marginTop: 2,
-  },
+  statIcon: { color: C.purpleLight, fontSize: 23 },
+  statTitle: { color: C.muted, fontSize: 11, marginTop: 7 },
+  statValue: { color: C.white, fontSize: 22, fontWeight: '900', marginTop: 5 },
+  statUnit: { color: C.muted, fontSize: 10, marginTop: 2 },
 
-  configCount: {
-    color: C.purpleLight,
-    fontSize: 11,
-    fontWeight: '700',
-  },
+  configCount: { color: C.purpleLight, fontSize: 11, fontWeight: '700' },
   addNewButton: {
-    backgroundColor: '#21163C',
-    borderWidth: 1,
-    borderColor: '#5739A0',
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
+    backgroundColor: '#21163C', borderWidth: 1,
+    borderColor: '#5739A0', borderRadius: 14, padding: 14,
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', marginBottom: 10,
   },
-  addNewPlus: {
-    color: C.purpleLight,
-    fontSize: 21,
-    marginRight: 8,
+  subscriptionButton: {
+    backgroundColor: '#171C2B', borderWidth: 1,
+    borderColor: '#39405A', borderRadius: 14, padding: 14,
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', marginBottom: 12,
   },
-  addNewText: {
-    color: C.purpleLight,
-    fontSize: 13,
-    fontWeight: '800',
-  },
+  addNewPlus: { color: C.purpleLight, fontSize: 21, marginRight: 8 },
+  addNewText: { color: C.purpleLight, fontSize: 13, fontWeight: '800' },
+
   addPanel: {
-    backgroundColor: C.panel,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 17,
-    padding: 15,
-    marginBottom: 12,
+    backgroundColor: C.panel, borderWidth: 1,
+    borderColor: C.border, borderRadius: 17,
+    padding: 15, marginBottom: 12,
   },
   addPanelTitle: {
-    color: C.white,
-    fontSize: 14,
-    fontWeight: '800',
-    marginBottom: 12,
+    color: C.white, fontSize: 14,
+    fontWeight: '800', marginBottom: 12,
   },
   input: {
-    backgroundColor: C.bg,
-    color: C.white,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 12,
-    minHeight: 95,
-    padding: 13,
-    fontSize: 12,
-    textAlign: 'left',
+    backgroundColor: C.bg, color: C.white,
+    borderWidth: 1, borderColor: C.border,
+    borderRadius: 12, minHeight: 65,
+    padding: 13, fontSize: 12, textAlign: 'left',
   },
   submitButton: {
-    backgroundColor: C.purple,
-    borderRadius: 12,
-    alignItems: 'center',
-    padding: 13,
-    marginTop: 11,
+    backgroundColor: C.purple, borderRadius: 12,
+    alignItems: 'center', padding: 13, marginTop: 11,
   },
-  submitText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
+  submitText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  subscriptionHint: {
+    color: C.muted, fontSize: 10, marginTop: 10, lineHeight: 17,
   },
 
   emptyBox: {
-    backgroundColor: C.panel,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 25,
-    alignItems: 'center',
+    backgroundColor: C.panel, borderRadius: 17,
+    borderWidth: 1, borderColor: C.border,
+    padding: 25, alignItems: 'center',
   },
-  emptyIcon: {
-    color: C.purpleLight,
-    fontSize: 35,
-  },
+  emptyIcon: { color: C.purpleLight, fontSize: 35 },
   emptyTitle: {
-    color: C.white,
-    fontWeight: '800',
-    fontSize: 14,
-    marginTop: 10,
+    color: C.white, fontWeight: '800', fontSize: 14, marginTop: 10,
   },
   emptyText: {
-    color: C.muted,
-    fontSize: 11,
-    marginTop: 7,
-    textAlign: 'center',
-    lineHeight: 20,
+    color: C.muted, fontSize: 11, marginTop: 7,
+    textAlign: 'center', lineHeight: 20,
   },
 
   configCard: {
-    backgroundColor: C.panel,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 15,
-    padding: 13,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 9,
+    backgroundColor: C.panel, borderWidth: 1,
+    borderColor: C.border, borderRadius: 15,
+    padding: 13, flexDirection: 'row',
+    alignItems: 'center', marginBottom: 9,
   },
-  configCardSelected: {
-    borderColor: C.purple,
-    backgroundColor: '#171326',
-  },
-  configCheck: {
-    marginRight: 11,
-  },
+  configCardSelected: { borderColor: C.purple, backgroundColor: '#171326' },
+  configCheck: { marginRight: 11 },
   radio: {
-    width: 19,
-    height: 19,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: C.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 19, height: 19, borderRadius: 10,
+    borderWidth: 1.5, borderColor: C.muted,
+    alignItems: 'center', justifyContent: 'center',
   },
-  radioSelected: {
-    borderColor: C.purpleLight,
-  },
+  radioSelected: { borderColor: C.purpleLight },
   radioInner: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: C.purpleLight,
+    width: 9, height: 9, borderRadius: 5, backgroundColor: C.purpleLight,
   },
-  configInfo: {
-    flex: 1,
-  },
-  configName: {
-    color: C.white,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  configMeta: {
-    color: C.muted,
-    fontSize: 10,
-    marginTop: 5,
-  },
+  configInfo: { flex: 1 },
+  configName: { color: C.white, fontSize: 13, fontWeight: '800' },
+  configMeta: { color: C.muted, fontSize: 10, marginTop: 5 },
   activeTag: {
-    backgroundColor: '#123C32',
-    borderRadius: 7,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    backgroundColor: '#123C32', borderRadius: 7,
+    paddingHorizontal: 8, paddingVertical: 5,
   },
-  activeTagText: {
-    color: C.green,
-    fontSize: 8,
-    fontWeight: '900',
-  },
-  deleteButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    marginLeft: 5,
-  },
-  deleteText: {
-    color: C.red,
-    fontSize: 23,
-  },
+  activeTagText: { color: C.green, fontSize: 8, fontWeight: '900' },
+  deleteButton: { paddingHorizontal: 10, paddingVertical: 3, marginLeft: 5 },
+  deleteText: { color: C.red, fontSize: 23 },
 
   footer: {
-    alignItems: 'center',
-    marginTop: 32,
-    paddingTop: 19,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
+    alignItems: 'center', marginTop: 32,
+    paddingTop: 19, borderTopWidth: 1, borderTopColor: C.border,
   },
-  footerBrand: {
-    color: C.purpleLight,
-    fontSize: 17,
-    fontWeight: '900',
-    letterSpacing: 2,
-  },
-  footerText: {
-    color: C.muted,
-    fontSize: 8,
-    letterSpacing: 2,
-    marginTop: 6,
-  },
-  footerVersion: {
-    color: '#55546A',
-    fontSize: 8,
-    letterSpacing: 1,
-    marginTop: 9,
-  },
+  footerBrand: { color: C.purpleLight, fontSize: 17, fontWeight: '900' },
+  footerText: { color: C.muted, fontSize: 8, marginTop: 6 },
+  footerVersion: { color: '#55546A', fontSize: 8, marginTop: 9 },
 });
