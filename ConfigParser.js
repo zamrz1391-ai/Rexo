@@ -1,40 +1,67 @@
-// V2Rexo — Config link parser (vless / vmess / trojan / ss)
+
+const SUPPORTED = ['vless', 'vmess', 'trojan', 'ss'];
 
 export function parseConfigLink(link) {
+  if (typeof link !== 'string' || !link.trim()) {
+    throw new Error('لینک کانفیگ خالی است');
+  }
+
   const raw = link.trim();
-  if (raw.startsWith('vmess://')) return parseVmess(raw);
-  if (raw.startsWith('vless://')) return parseVless(raw);
-  if (raw.startsWith('trojan://')) return parseTrojan(raw);
-  if (raw.startsWith('ss://')) return parseShadowsocks(raw);
-  throw new Error('لینک پشتیبانی نمی‌شود. فقط vless / vmess / trojan / ss');
+  const protocol = raw.slice(0, raw.indexOf('://')).toLowerCase();
+
+  if (!SUPPORTED.includes(protocol)) {
+    throw new Error('پروتکل پشتیبانی نمی‌شود: ' + protocol);
+  }
+
+  if (protocol === 'vmess') return parseVmess(raw);
+  if (protocol === 'vless') return parseVless(raw);
+  if (protocol === 'trojan') return parseTrojan(raw);
+  if (protocol === 'ss') return parseShadowsocks(raw);
 }
 
-function b64decode(s) {
+function decodeBase64(value) {
   try {
-    const norm = s.replace(/-/g, '+').replace(/_/g, '/');
-    return decodeURIComponent(
-      atob(norm + '='.repeat((4 - (norm.length % 4)) % 4))
-        .split('')
-        .map((c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0'))
-        .join('')
+    const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+    const binary = atob(
+      normalized + '='.repeat((4 - normalized.length % 4) % 4)
     );
+
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+
+    return new TextDecoder().decode(bytes);
   } catch {
     return null;
   }
 }
 
+function decodeName(value) {
+  try {
+    return decodeURIComponent(value || '');
+  } catch {
+    return value || '';
+  }
+}
+
 function parseVmess(link) {
-  const json = b64decode(link.slice('vmess://'.length));
-  if (!json) throw new Error('لینک vmess نامعتبر است');
+  const encoded = link.slice(8).split('#')[0];
+  const json = decodeBase64(encoded);
+
+  if (!json) throw new Error('لینک VMess نامعتبر است');
+
   const j = JSON.parse(json);
+
+  if (!j.add || !j.port || !j.id) {
+    throw new Error('اطلاعات VMess ناقص است');
+  }
+
   return {
     id: `${j.add}:${j.port}`,
     protocol: 'vmess',
     name: j.ps || j.remarks || 'VMess',
     address: j.add,
-    port: parseInt(j.port, 10),
+    port: Number(j.port),
     userId: j.id,
-    alterId: parseInt(j.aid || 0, 10),
+    alterId: Number(j.aid || 0),
     security: j.scy || 'auto',
     tls: j.tls === 'tls',
     sni: j.sni || '',
@@ -46,64 +73,94 @@ function parseVmess(link) {
 
 function parseVless(link) {
   const u = new URL(link);
-  const params = u.searchParams;
+  const p = u.searchParams;
+
+  if (!u.hostname || !u.username) {
+    throw new Error('اطلاعات VLESS ناقص است');
+  }
+
   return {
     id: `${u.hostname}:${u.port || 443}`,
     protocol: 'vless',
-    name: decodeURIComponent(u.hash.slice(1)) || 'VLESS',
+    name: decodeName(u.hash.slice(1)) || 'VLESS',
     address: u.hostname,
-    port: parseInt(u.port || 443, 10),
-    userId: u.username,
-    flow: params.get('flow') || '',
-    tls: params.get('security') === 'tls' || params.get('security') === 'reality',
-    reality: params.get('security') === 'reality',
-    sni: params.get('sni') || '',
-    pbk: params.get('pbk') || '',
-    sid: params.get('sid') || '',
-    fp: params.get('fp') || 'chrome',
-    network: params.get('type') || 'tcp',
-    wsPath: params.get('path') || '',
-    wsHost: params.get('host') || '',
+    port: Number(u.port || 443),
+    userId: decodeURIComponent(u.username),
+    flow: p.get('flow') || '',
+    tls: ['tls', 'reality'].includes(p.get('security')),
+    reality: p.get('security') === 'reality',
+    sni: p.get('sni') || '',
+    pbk: p.get('pbk') || '',
+    sid: p.get('sid') || '',
+    fp: p.get('fp') || 'chrome',
+    network: p.get('type') || 'tcp',
+    wsPath: p.get('path') || '',
+    wsHost: p.get('host') || '',
   };
 }
 
 function parseTrojan(link) {
   const u = new URL(link);
-  const params = u.searchParams;
+  const p = u.searchParams;
+
+  if (!u.hostname || !u.username) {
+    throw new Error('اطلاعات Trojan ناقص است');
+  }
+
   return {
     id: `${u.hostname}:${u.port || 443}`,
     protocol: 'trojan',
-    name: decodeURIComponent(u.hash.slice(1)) || 'Trojan',
+    name: decodeName(u.hash.slice(1)) || 'Trojan',
     address: u.hostname,
-    port: parseInt(u.port || 443, 10),
+    port: Number(u.port || 443),
     password: decodeURIComponent(u.username),
     tls: true,
-    sni: params.get('sni') || u.hostname,
-    network: params.get('type') || 'tcp',
-    wsPath: params.get('path') || '',
-    wsHost: params.get('host') || '',
+    sni: p.get('sni') || u.hostname,
+    network: p.get('type') || 'tcp',
+    wsPath: p.get('path') || '',
+    wsHost: p.get('host') || '',
   };
 }
 
 function parseShadowsocks(link) {
-  const hashIndex = link.indexOf('#');
-  const name = hashIndex > -1 ? decodeURIComponent(link.slice(hashIndex + 1)) : 'SS';
-  const body = link.slice('ss://'.length, hashIndex > -1 ? hashIndex : undefined);
-  const decoded = b64decode(body);
-  if (!decoded) throw new Error('لینک ss نامعتبر است');
+  const u = new URL(link);
+  const name = decodeName(u.hash.slice(1)) || 'Shadowsocks';
+  let userInfo = u.href.slice(5).split('#')[0].split('?')[0];
+
+  if (userInfo.includes('@')) {
+    userInfo = userInfo.slice(0, userInfo.lastIndexOf('@'));
+  }
+
+  const decoded = decodeBase64(userInfo);
+  if (!decoded || !decoded.includes(':')) {
+    throw new Error('اطلاعات Shadowsocks نامعتبر است');
+  }
+
   const at = decoded.lastIndexOf('@');
-  const userinfo = decoded.slice(0, at);
-  const hostport = decoded.slice(at + 1);
-  const [method, password] = userinfo.split(':');
-  const colon = hostport.lastIndexOf(':');
+  const credentials = decoded.slice(0, at);
+  const server = decoded.slice(at + 1);
+  const colon = credentials.indexOf(':');
+
+  if (colon < 1) throw new Error('اطلاعات رمزگذاری Shadowsocks ناقص است');
+
+  const address = server.startsWith('[')
+    ? server.slice(1, server.indexOf(']'))
+    : server.slice(0, server.lastIndexOf(':'));
+
+  const port = Number(server.slice(server.lastIndexOf(':') + 1));
+
+  if (!address || !Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('آدرس یا پورت Shadowsocks نامعتبر است');
+  }
+
   return {
-    id: `ss-${hostport.slice(0, colon)}:${hostport.slice(colon + 1)}`,
+    id: `ss-${address}:${port}`,
     protocol: 'shadowsocks',
     name,
-    address: hostport.slice(0, colon),
-    port: parseInt(hostport.slice(colon + 1), 10),
-    method,
-    password,
+    address,
+    port,
+    method: credentials.slice(0, colon),
+    password: credentials.slice(colon + 1),
     tls: false,
     network: 'tcp',
   };
