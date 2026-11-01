@@ -1,85 +1,42 @@
-// V2Rexo — لایه‌ی اتصال به موتور VPN نیتیو
-// اندروید: expo-xray-vpn | iOS: react-native-nitro-xray-core
-// در Expo Go لود نمی‌شود — اپ باید با prebuild بیلد شود.
+// VpnEngine.js — wrapper around expo-xray-vpn (real API)
+import ExpoXrayVpn from 'expo-xray-vpn';
 
-import { Platform } from 'react-native';
-
-let androidModule = null;
-let nitroClient = null;
-
-async function getAndroid() {
-  if (!androidModule) {
-    try {
-      const mod = await import('expo-xray-vpn');
-      androidModule = mod.default ?? mod.ExpoXrayVpn ?? mod;
-    } catch {
-      throw new Error('ماژول نیتیو اندروید لود نشد — اپ با prebuild بیلد شده باشد');
-    }
-  }
-  return androidModule;
+export async function requestPermission() {
+  const res = await ExpoXrayVpn.requestPermission();
+  return res && res.granted === true;
 }
 
-async function getIOS() {
-  if (!nitroClient) {
-    try {
-      const mod = await import('react-native-nitro-xray-core');
-      nitroClient = mod.XrayClient;
-    } catch {
-      throw new Error('ماژول نیتیو iOS لود نشد — Network Extension تنظیم نشده');
-    }
+export async function connect(xrayConfigJson, opts = {}) {
+  const granted = await requestPermission();
+  if (!granted) {
+    throw new Error('دسترسی VPN رد شد');
   }
-  return nitroClient;
-}
-
-export async function connect(configJson) {
-  if (Platform.OS === 'android') {
-    const vpn = await getAndroid();
-    const perm = await vpn.requestPermission();
-    if (!perm || perm.granted === false) throw new Error('اجازه‌ی VPN داده نشد');
-    await vpn.connect({
-      dnsServer: '1.1.1.1',
-      mtu: 1500,
-      profileId: 'v2rexo',
-      profileName: 'V2Rexo VPN',
-      xrayConfigJson: configJson,
-    });
-    return 'connected';
-  } else {
-    const client = await getIOS();
-    await client.ensurePermission();
-    await client.connectJson(configJson);
-    return 'connected';
-  }
+  return ExpoXrayVpn.connect({
+    dnsServer: opts.dnsServer || '1.1.1.1',
+    mtu: opts.mtu || 1500,
+    profileId: opts.profileId || 'default',
+    profileName: opts.profileName || 'V2Rexo',
+    xrayConfigJson,
+  });
 }
 
 export async function disconnect() {
-  if (Platform.OS === 'android') {
-    const vpn = await getAndroid();
-    await vpn.disconnect();
-  } else {
-    const client = await getIOS();
-    await client.disconnect();
-  }
+  return ExpoXrayVpn.disconnect();
 }
 
-export async function getStatus() {
-  if (Platform.OS === 'android') {
-    const vpn = await getAndroid();
-    return await vpn.getStatus();
-  } else {
-    const client = await getIOS();
-    return await client.status();
-  }
+export async function getState() {
+  return ExpoXrayVpn.getState();
 }
 
-export function subscribeState(cb) {
-  if (Platform.OS === 'android') {
-    getAndroid().then((vpn) => {
-      if (vpn.addListener) vpn.addListener('onStateChange', (e) => cb(e.state, e.message));
-    });
-    return () => {};
-  } else {
-    getIOS().then((c) => c.onState((state, msg) => cb(state, msg)));
-    return () => {};
-  }
+export function onStateChange(cb) {
+  const sub = ExpoXrayVpn.addListener('onStateChange', cb);
+  return () => sub.remove();
+}
+
+export async function shareLinksToJson(text) {
+  return ExpoXrayVpn.convertShareLinksToXrayJson(text);
+}
+
+export async function jsonToShareLinks(xrayConfigJson) {
+  return ExpoXrayVpn.convertXrayJsonToShareLinks(xrayConfigJson);
 }
